@@ -1,8 +1,8 @@
-import type { PluginContext } from "@getpaseo/plugin";
-import { AgentCrew } from "./main.client";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { AgentCrew } from "./client/main";
 
-export default function contribute(plugin: PluginContext) {
-  plugin.addWorkspacePanel({
+export default function contribute(client: PluginClientContext) {
+  client.addWorkspacePanel({
     id: "crew",
     title: "Agent Crew",
     icon: "Network",
@@ -10,7 +10,7 @@ export default function contribute(plugin: PluginContext) {
     locations: ["explorer"],
     Component: AgentCrew,
   });
-  plugin.addCommandCenterItem({
+  client.addCommandCenterItem({
     id: "open-crew",
     title: "Open Agent Crew",
     icon: "Network",

@@ -8,13 +8,13 @@ const releaseFiles = [
   "CHANGELOG.md",
   "LICENSE",
   "README.md",
+  "client/main.tsx",
   "docs/images/agent-crew-overview.png",
   "docs/images/agent-crew-action.png",
-  "index.ts",
-  "main.client.tsx",
-  "src/lib/crew.shared.ts",
+  "index.client.tsx",
   "package.json",
   "paseo-plugin.json",
+  "shared/crew.ts",
   "tsconfig.json",
 ] as const;
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Migration
+
+- migrate the plugin to the Paseo 0.8 runtime-entry layout
+- move client modules under `client/` and shared code under `shared/`
+- switch to first-class `parentAgentId` handling with bounded cycles
+- add an explicit pending-permission modal with Allow and Deny actions
+- pin Paseo plugin packages to `0.8.0-beta.1`
+
 ## 0.1.0 (2026-09-02)
 
 ### Features

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentEntry } from "../src/lib/crew.shared";
+import type { AgentEntry } from "../shared/crew";
 import {
   agentAgeTimestamp,
   buildCrewForest,
@@ -7,8 +7,7 @@ import {
   crewCounts,
   crewState,
   formatAge,
-  PARENT_AGENT_ID_LABEL,
-} from "../src/lib/crew.shared";
+} from "../shared/crew";
 
 function entry(
   id: string,
@@ -31,8 +30,8 @@ function entry(
       availableModes: [],
       pendingPermissions: [],
       persistence: null,
+      parentAgentId: parentId,
       title: id,
-      labels: parentId ? { [PARENT_AGENT_ID_LABEL]: parentId } : {},
       ...overrides,
     },
     project: {
@@ -64,6 +63,25 @@ describe("crewState", () => {
 });
 
 describe("buildCrewForest", () => {
+  test("prefers the first-class parentAgentId field over legacy labels", () => {
+    const nodes = buildCrewForest(
+      [
+        entry("root", null, { workspaceId: "workspace-main" }),
+        entry("field-child", null, {
+          workspaceId: "workspace-main",
+          parentAgentId: "root",
+          labels: { "paseo.parent-agent-id": "other" },
+        }),
+      ],
+      "workspace-main",
+    );
+
+    expect(nodes.map(({ entry: item, depth }) => [item.agent.id, depth])).toEqual([
+      ["root", 0],
+      ["field-child", 1],
+    ]);
+  });
+
   test("shows every workspace agent and descendants across workspaces", () => {
     const nodes = buildCrewForest(
       [
