@@ -1,4 +1,3 @@
-import type { PaseoApi, PaseoWorkspace } from "@getpaseo/client";
 import { type PluginWorkspacePanelProps, usePaseo, useWorkspace } from "@getpaseo/plugin/client";
 import {
   FlatList,
@@ -25,6 +24,8 @@ import {
   crewState,
   formatAge,
   isWorking,
+  type PaseoApi,
+  type PaseoWorkspace,
   parentAgentId,
 } from "./crew";
 

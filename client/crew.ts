@@ -1,6 +1,8 @@
-import type { PaseoAgentListResult } from "@getpaseo/client";
+import type { usePaseo } from "@getpaseo/plugin/client";
 
-export type AgentEntry = PaseoAgentListResult["entries"][number];
+export type PaseoApi = ReturnType<typeof usePaseo>;
+export type PaseoWorkspace = Awaited<ReturnType<PaseoApi["workspaces"]["list"]>>["entries"][number];
+export type AgentEntry = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number];
 type AgentSnapshot = AgentEntry["agent"];
 
 const LEGACY_PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
