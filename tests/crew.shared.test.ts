@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentEntry } from "../shared/crew";
+import type { AgentEntry } from "../client/crew";
 import {
   agentAgeTimestamp,
   buildCrewForest,
@@ -7,7 +7,7 @@ import {
   crewCounts,
   crewState,
   formatAge,
-} from "../shared/crew";
+} from "../client/crew";
 
 function entry(
   id: string,
