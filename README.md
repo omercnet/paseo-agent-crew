@@ -123,9 +123,9 @@ paseo plugin install /absolute/path/to/paseo-agent-crew
 paseo plugin reload agent-crew
 ```
 
-The project targets Paseo 0.8 beta and pins `@getpaseo/cli`, `@getpaseo/client`, `@getpaseo/plugin`,
-and `@getpaseo/protocol` to `0.8.0-beta.1`. React 19.1 and React Native 0.81 match the versions
-supplied by the Paseo host.
+The manifest requires Paseo `^0.8.0`, which accepts Paseo 0.8.x including compatible prereleases.
+The project pins `@getpaseo/cli`, `@getpaseo/client`, `@getpaseo/plugin`, and
+`@getpaseo/protocol` to `0.8.0-beta.1`. React 19.1 and React Native 0.81 match the host.
 
 Release Please maintains versions, changelog entries, tags, and GitHub releases from Conventional
 Commits. Each release includes an `agent-crew-vX.Y.Z.zip` asset containing the installable plugin

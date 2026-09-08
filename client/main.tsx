@@ -26,7 +26,7 @@ import {
   formatAge,
   isWorking,
   parentAgentId,
-} from "../shared/crew";
+} from "./crew";
 
 const PAGE_LIMIT = 200;
 const MAX_PAGES = 10;
@@ -34,99 +34,64 @@ const REFRESH_DEBOUNCE_MS = 500;
 const BACKSTOP_REFRESH_MS = 30_000;
 const CLOCK_INTERVAL_MS = 15_000;
 
-interface CrewData {
+type CrewData = {
   entries: AgentEntry[];
   workspaceNames: ReadonlyMap<string, string>;
   truncated: boolean;
-}
+};
 
-interface CrewActionSend {
-  kind: "send";
-  agentId: string;
-  text: string;
-  interrupted: boolean;
-}
+type CrewAction =
+  | { kind: "send"; agentId: string; text: string; interrupted: boolean }
+  | { kind: "detach"; agentId: string }
+  | { kind: "archive"; agentId: string };
 
-interface CrewActionDetach {
-  kind: "detach";
-  agentId: string;
-}
+type PermissionRequest = AgentEntry["agent"]["pendingPermissions"][number];
 
-interface CrewActionArchive {
-  kind: "archive";
-  agentId: string;
-}
-
-type CrewAction = CrewActionSend | CrewActionDetach | CrewActionArchive;
-
-interface PermissionRequest {
-  id: string;
-  name: string;
-  kind: string;
-  title?: string;
-  description?: string;
-  input?: Record<string, unknown>;
-  detail?: Record<string, unknown>;
-  suggestions?: readonly unknown[];
-  actions?: readonly { id: string; label: string; behavior: "allow" | "deny" }[];
-  metadata?: Record<string, unknown>;
-}
-
-interface PermissionActionInput {
+type PermissionActionInput = {
   agentId: string;
   request: PermissionRequest;
   behavior: "allow" | "deny";
-}
+};
 
-interface PermissionDialogState {
-  node: CrewNode;
-  request: PermissionRequest;
-}
+type PermissionDialogState = { node: CrewNode; request: PermissionRequest } | null;
+type DialogState = { kind: "message" | "detach" | "archive"; node: CrewNode } | null;
 
-interface DialogState {
-  kind: "message" | "detach" | "archive";
-  node: CrewNode;
-}
-
-function loadAgents(paseo: PaseoApi): Promise<{ entries: AgentEntry[]; truncated: boolean }> {
+async function loadAgents(paseo: PaseoApi): Promise<{ entries: AgentEntry[]; truncated: boolean }> {
   const entries: AgentEntry[] = [];
   let cursor: string | undefined;
-  return (async () => {
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const result = await paseo.agents.list({
-        sort: [{ key: "updated_at", direction: "desc" }],
-        page: { limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) },
-      });
-      entries.push(...result.entries);
-      cursor = result.pageInfo.hasMore ? (result.pageInfo.nextCursor ?? undefined) : undefined;
-      if (!cursor) return { entries, truncated: false };
-    }
-    return { entries, truncated: true };
-  })();
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await paseo.agents.list({
+      sort: [{ key: "updated_at", direction: "desc" }],
+      page: { limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) },
+    });
+    entries.push(...result.entries);
+    cursor = result.pageInfo.hasMore ? (result.pageInfo.nextCursor ?? undefined) : undefined;
+    if (!cursor) return { entries, truncated: false };
+  }
+  return { entries, truncated: true };
 }
 
-function loadWorkspaces(paseo: PaseoApi): Promise<PaseoWorkspace[]> {
+async function loadWorkspaces(paseo: PaseoApi): Promise<PaseoWorkspace[]> {
   const workspaces: PaseoWorkspace[] = [];
   let cursor: string | undefined;
-  return (async () => {
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const result = await paseo.workspaces.list({
-        page: { limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) },
-      });
-      workspaces.push(...result.entries);
-      cursor = result.pageInfo.hasMore ? (result.pageInfo.nextCursor ?? undefined) : undefined;
-      if (!cursor) break;
-    }
-    return workspaces;
-  })();
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await paseo.workspaces.list({
+      page: { limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) },
+    });
+    workspaces.push(...result.entries);
+    cursor = result.pageInfo.hasMore ? (result.pageInfo.nextCursor ?? undefined) : undefined;
+    if (!cursor) break;
+  }
+  return workspaces;
 }
 
-function loadCrewData(paseo: PaseoApi): Promise<CrewData> {
-  return Promise.all([loadAgents(paseo), loadWorkspaces(paseo)]).then(([agents, workspaces]) => ({
+async function loadCrewData(paseo: PaseoApi): Promise<CrewData> {
+  const [agents, workspaces] = await Promise.all([loadAgents(paseo), loadWorkspaces(paseo)]);
+  return {
     entries: agents.entries,
     truncated: agents.truncated,
     workspaceNames: new Map(workspaces.map((workspace) => [workspace.id, workspace.name])),
-  }));
+  };
 }
 
 function ActionButton({
@@ -150,7 +115,7 @@ function ActionButton({
       disabled={disabled}
       hitSlop={4}
       onPress={onPress}
-      style={({ pressed }: { pressed: boolean }) => [
+      style={({ pressed }) => [
         styles.actionButton,
         pressed && styles.pressed,
         disabled && styles.disabled,
@@ -220,11 +185,7 @@ export function AgentCrew({
   const paseo = usePaseo();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const workspaceTitle = useWorkspace(
-    workspaceId,
-    (workspace: { title?: string | null; name: string }) =>
-      workspace.title?.trim() || workspace.name,
-  );
+  const workspaceTitle = useWorkspace(workspaceId, ({ name, title }) => title?.trim() || name);
   const queryKey = useMemo(() => ["agent-crew", "directory", host.id], [host.id]);
   const { data, error, isPending, isFetching, refetch } = useQuery({
     queryKey,
@@ -235,8 +196,8 @@ export function AgentCrew({
   const [selectedState, setSelectedState] = useState<CrewState | null>(null);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const [dialog, setDialog] = useState<DialogState | null>(null);
-  const [permissionDialog, setPermissionDialog] = useState<PermissionDialogState | null>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
+  const [permissionDialog, setPermissionDialog] = useState<PermissionDialogState>(null);
   const [message, setMessage] = useState("");
   const [collapsedAgentIds, setCollapsedAgentIds] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -286,35 +247,32 @@ export function AgentCrew({
     [collapsedAgentIds, nodes],
   );
   const counts = useMemo(() => crewCounts(allNodes), [allNodes]);
-  const memberNodes = useMemo(() => allNodes.filter((node: CrewNode) => node.member), [allNodes]);
+  const memberNodes = useMemo(() => allNodes.filter(({ member }) => member), [allNodes]);
   const crewCount = useMemo(
-    () => allNodes.filter((node: CrewNode) => node.depth === 0 && node.descendantCount > 0).length,
+    () =>
+      allNodes.filter(({ depth, descendantCount }) => depth === 0 && descendantCount > 0).length,
     [allNodes],
   );
   const externalCount = useMemo(
     () =>
       memberNodes.filter(
-        ({ entry }: CrewNode) =>
-          entry.agent.workspaceId !== null && entry.agent.workspaceId !== workspaceId,
+        ({ entry }) => entry.agent.workspaceId && entry.agent.workspaceId !== workspaceId,
       ).length,
     [memberNodes, workspaceId],
   );
 
   const action = useMutation({
-    mutationFn: async (input: CrewAction): Promise<undefined> => {
+    mutationFn: async (input: CrewAction) => {
       const handle = paseo.agents.ref(input.agentId);
       if (input.kind === "send") {
         await handle.send(input.text);
-        return undefined;
-      }
-      if (input.kind === "detach") {
+      } else if (input.kind === "detach") {
         await handle.detach();
-        return undefined;
+      } else {
+        await handle.archive();
       }
-      await handle.archive();
-      return undefined;
     },
-    onSuccess: (_result: undefined, input: CrewAction) => {
+    onSuccess: (_result, input) => {
       if (input.kind === "send") {
         toast.show(input.interrupted ? "Agent redirected" : "Nudge sent", { variant: "success" });
       } else if (input.kind === "detach") {
@@ -325,7 +283,7 @@ export function AgentCrew({
       setDialog(null);
       setMessage("");
     },
-    onError: (mutationError: unknown) => {
+    onError: (mutationError) => {
       toast.error(mutationError instanceof Error ? mutationError.message : "Agent action failed");
     },
     onSettled: async () => {
@@ -334,7 +292,7 @@ export function AgentCrew({
   });
 
   const permissionAction = useMutation({
-    mutationFn: async (input: PermissionActionInput): Promise<undefined> => {
+    mutationFn: async (input: PermissionActionInput) => {
       await paseo.agents.ref(input.agentId).respondToPermission({
         requestId: input.request.id,
         response:
@@ -342,15 +300,14 @@ export function AgentCrew({
             ? { behavior: "allow" }
             : { behavior: "deny", message: "Denied from Agent Crew" },
       });
-      return undefined;
     },
-    onSuccess: (_result: undefined, input: PermissionActionInput) => {
+    onSuccess: (_result, input) => {
       toast.show(input.behavior === "allow" ? "Permission allowed" : "Permission denied", {
         variant: "success",
       });
       setPermissionDialog(null);
     },
-    onError: (mutationError: unknown) => {
+    onError: (mutationError) => {
       const message = permissionErrorMessage(mutationError);
       toast.error(message);
       if (message === "Permission request was already resolved.") {
@@ -361,59 +318,6 @@ export function AgentCrew({
       await queryClient.invalidateQueries({ queryKey });
     },
   });
-
-  function openDialog(kind: DialogState["kind"], node: CrewNode) {
-    setMessage("");
-    setDialog({ kind, node });
-  }
-
-  function submitDialog() {
-    if (!dialog || action.isPending) return;
-    const agent = dialog.node.entry.agent;
-    if (dialog.kind === "message") {
-      const text = message.trim();
-      if (!text) return;
-      action.mutate({ kind: "send", agentId: agent.id, text, interrupted: isWorking(agent) });
-      return;
-    }
-    action.mutate({ kind: dialog.kind, agentId: agent.id });
-  }
-
-  function toggleCollapsed(agentId: string) {
-    setCollapsedAgentIds((current: ReadonlySet<string>) => {
-      const next = new Set(current);
-      if (next.has(agentId)) next.delete(agentId);
-      else next.add(agentId);
-      return next;
-    });
-  }
-
-  function openPermissionDialog(node: CrewNode, request: PermissionRequest) {
-    setPermissionDialog({ node, request });
-  }
-
-  function submitPermissionAction(behavior: "allow" | "deny") {
-    if (!permissionDialog || permissionAction.isPending) return;
-    permissionAction.mutate({
-      agentId: permissionDialog.node.entry.agent.id,
-      request: permissionDialog.request,
-      behavior,
-    });
-  }
-
-  const currentWorkspaceTitle = workspaceTitle?.trim() || "Current workspace";
-  const dialogConfirmLabel =
-    dialog?.kind === "message"
-      ? isWorking(dialog.node.entry.agent)
-        ? "Interrupt & redirect"
-        : crewState(dialog.node.entry.agent) === "needs-input"
-          ? "Dismiss request & nudge"
-          : "Send nudge"
-      : dialog?.kind === "detach"
-        ? "Detach"
-        : dialog?.kind === "archive"
-          ? "Archive"
-          : "Confirm";
 
   const panelStyles = useMemo(
     () =>
@@ -526,13 +430,6 @@ export function AgentCrew({
         },
         rootRow: { backgroundColor: theme.colors.surface1 },
         childCount: { flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: 11 },
-        contextBadge: {
-          flexShrink: 0,
-          color: theme.colors.foregroundMuted,
-          fontSize: 10,
-          fontWeight: "600",
-          textTransform: "uppercase",
-        },
         collapseSpacer: { width: 30, height: 30 },
         metadata: { color: theme.colors.foregroundMuted, fontSize: 11 },
         lastError: { color: theme.colors.statusDanger, fontSize: 11 },
@@ -544,7 +441,6 @@ export function AgentCrew({
         empty: { padding: 24, gap: 6, alignItems: "center" },
         emptyTitle: { color: theme.colors.foreground, fontSize: 16, fontWeight: "600" },
         emptyBody: { color: theme.colors.foregroundMuted, fontSize: 13, textAlign: "center" },
-        truncated: { paddingHorizontal: 16, paddingVertical: 8, color: theme.colors.statusWarning },
         error: {
           margin: 12,
           padding: 10,
@@ -552,6 +448,13 @@ export function AgentCrew({
           backgroundColor: theme.colors.surface1,
           borderRadius: 8,
         },
+        contextBadge: {
+          color: theme.colors.foregroundMuted,
+          fontSize: 10,
+          fontWeight: "600",
+          textTransform: "uppercase",
+        },
+        truncated: { paddingHorizontal: 16, paddingVertical: 8, color: theme.colors.statusWarning },
         modalBody: { gap: 14, padding: 18 },
         modalCopy: { color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 19 },
         messageInput: {
@@ -589,7 +492,6 @@ export function AgentCrew({
           fontSize: 13,
         },
         permissionBody: { gap: 12 },
-        permissionScroll: { maxHeight: 320 },
         permissionSection: { gap: 4 },
         permissionLabel: { color: theme.colors.foregroundMuted, fontSize: 11, fontWeight: "600" },
         permissionValue: { color: theme.colors.foreground, fontSize: 13, lineHeight: 18 },
@@ -615,6 +517,7 @@ export function AgentCrew({
         permissionPrimary: { backgroundColor: theme.colors.accent },
         permissionDeny: { backgroundColor: theme.colors.statusDanger },
         permissionButtonText: { color: theme.colors.foreground, fontWeight: "600", fontSize: 13 },
+        permissionDenyText: { color: theme.colors.surface0, fontWeight: "600", fontSize: 13 },
         permissionPrimaryText: {
           color: theme.colors.accentForeground,
           fontWeight: "600",
@@ -623,6 +526,44 @@ export function AgentCrew({
       }),
     [layout.compact, theme],
   );
+  function openDialog(kind: NonNullable<DialogState>["kind"], node: CrewNode) {
+    setMessage("");
+    setDialog({ kind, node });
+  }
+
+  function submitDialog() {
+    if (!dialog || action.isPending) return;
+    const agent = dialog.node.entry.agent;
+    if (dialog.kind === "message") {
+      const text = message.trim();
+      if (!text) return;
+      action.mutate({ kind: "send", agentId: agent.id, text, interrupted: isWorking(agent) });
+      return;
+    }
+    action.mutate({ kind: dialog.kind, agentId: agent.id });
+  }
+
+  function toggleCollapsed(agentId: string) {
+    setCollapsedAgentIds((current) => {
+      const next = new Set(current);
+      if (next.has(agentId)) next.delete(agentId);
+      else next.add(agentId);
+      return next;
+    });
+  }
+
+  function openPermissionDialog(node: CrewNode, request: PermissionRequest) {
+    setPermissionDialog({ node, request });
+  }
+
+  function submitPermissionAction(behavior: "allow" | "deny") {
+    if (!permissionDialog || permissionAction.isPending) return;
+    permissionAction.mutate({
+      agentId: permissionDialog.node.entry.agent.id,
+      request: permissionDialog.request,
+      behavior,
+    });
+  }
 
   function renderRow({ item }: ListRenderItemInfo<CrewNode>) {
     const agent = item.entry.agent;
@@ -642,28 +583,23 @@ export function AgentCrew({
     const age = formatAge(agentAgeTimestamp(agent), now);
     const expandable = item.descendantCount > 0;
     const collapsed = collapsedAgentIds.has(agent.id);
-    const pendingPermissions = (agent.pendingPermissions ?? []) as PermissionRequest[];
+    const pendingPermissions = agent.pendingPermissions ?? [];
     const pendingPermission = pendingPermissions[0];
     const pendingPermissionCount = pendingPermissions.length;
-
-    const titleLine = (
-      <View style={panelStyles.rowTitleLine}>
-        <View style={[panelStyles.dot, { backgroundColor: color }]} />
-        <Text style={panelStyles.rowTitle} numberOfLines={1}>
-          {agentTitle(item.entry)}
-        </Text>
-        {!item.member ? <Text style={panelStyles.contextBadge}>Context</Text> : null}
-        {expandable ? (
-          <Text style={panelStyles.childCount} numberOfLines={1}>
-            {item.descendantCount} {item.descendantCount === 1 ? "descendant" : "descendants"}
-          </Text>
-        ) : null}
-      </View>
-    );
-
-    const body = (
+    const rowBody = (
       <>
-        {titleLine}
+        <View style={panelStyles.rowTitleLine}>
+          <View style={[panelStyles.dot, { backgroundColor: color }]} />
+          <Text style={panelStyles.rowTitle} numberOfLines={1}>
+            {agentTitle(item.entry)}
+          </Text>
+          {!item.member ? <Text style={panelStyles.contextBadge}>Context</Text> : null}
+          {expandable ? (
+            <Text style={panelStyles.childCount} numberOfLines={1}>
+              {item.descendantCount} {item.descendantCount === 1 ? "descendant" : "descendants"}
+            </Text>
+          ) : null}
+        </View>
         <Text style={panelStyles.metadata} numberOfLines={1}>
           {metadata}
         </Text>
@@ -700,15 +636,12 @@ export function AgentCrew({
             accessibilityRole="button"
             accessibilityLabel={`Open ${agentTitle(item.entry)}`}
             onPress={() => navigation.openAgent({ agentId: agent.id })}
-            style={({ pressed }: { pressed: boolean }) => [
-              panelStyles.rowBody,
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [panelStyles.rowBody, pressed && styles.pressed]}
           >
-            {body}
+            {rowBody}
           </Pressable>
         ) : (
-          <View style={panelStyles.rowBody}>{body}</View>
+          <View style={panelStyles.rowBody}>{rowBody}</View>
         )}
         <View style={panelStyles.statusColumn}>
           <Text
@@ -769,6 +702,47 @@ export function AgentCrew({
       </View>
     );
   }
+  const currentWorkspaceTitle = workspaceTitle?.trim() || "Current workspace";
+  let dialogTitle = "";
+  let dialogCopy = "";
+  let confirmLabel = "";
+  if (dialog) {
+    const target = agentTitle(dialog.node.entry);
+    if (dialog.kind === "message") {
+      const state = crewState(dialog.node.entry.agent);
+      const running = isWorking(dialog.node.entry.agent);
+      dialogTitle = running ? `Interrupt and redirect ${target}` : `Nudge ${target}`;
+      dialogCopy = running
+        ? "This agent is working. Sending a message stops its current turn and starts the new direction."
+        : state === "needs-input"
+          ? "This agent is waiting for a permission decision. Sending a message dismisses that request and starts the new direction."
+          : "Send a concise follow-up with the missing context or next step.";
+      confirmLabel = running
+        ? "Interrupt & redirect"
+        : state === "needs-input"
+          ? "Dismiss request & nudge"
+          : "Send nudge";
+    } else if (dialog.kind === "detach") {
+      dialogTitle = `Detach ${target}?`;
+      dialogCopy =
+        dialog.node.descendantCount > 0
+          ? `This agent and its ${dialog.node.descendantCount} descendants will leave this crew view and continue as standalone agents.`
+          : "This agent will leave this crew view and continue as a standalone agent.";
+      confirmLabel = "Detach";
+    } else {
+      dialogTitle = `Archive ${target}?`;
+      dialogCopy =
+        dialog.node.descendantCount > 0
+          ? `This agent has ${dialog.node.descendantCount} managed descendants. Same-workspace descendants are archived with it; cross-workspace descendants detach and continue.`
+          : isWorking(dialog.node.entry.agent)
+            ? "This agent is still working. Archiving stops it and removes it from the crew."
+            : "This agent will stop and be removed from the crew.";
+      confirmLabel = "Archive";
+    }
+  }
+  const permissionDialogTitle = permissionDialog
+    ? `Permission request from ${agentTitle(permissionDialog.node.entry)}`
+    : "Permission request";
 
   return (
     <View style={panelStyles.screen}>
@@ -789,10 +763,7 @@ export function AgentCrew({
             accessibilityRole="button"
             accessibilityLabel="Refresh Agent Crew"
             onPress={() => void refetch()}
-            style={({ pressed }: { pressed: boolean }) => [
-              panelStyles.refreshButton,
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [panelStyles.refreshButton, pressed && styles.pressed]}
           >
             <Icon
               name="RefreshCw"
@@ -822,11 +793,7 @@ export function AgentCrew({
             accessibilityRole="button"
             accessibilityState={{ selected: selectedState === null }}
             onPress={() => setSelectedState(null)}
-            style={({ pressed }: { pressed: boolean }) => [
-              panelStyles.chip,
-              selectedState === null && panelStyles.chipSelected,
-              pressed && styles.pressed,
-            ]}
+            style={[panelStyles.chip, selectedState === null && panelStyles.chipSelected]}
           >
             <Text
               style={[panelStyles.chipText, selectedState === null && panelStyles.chipTextSelected]}
@@ -840,11 +807,7 @@ export function AgentCrew({
               accessibilityRole="button"
               accessibilityState={{ selected: selectedState === state }}
               onPress={() => setSelectedState(state)}
-              style={({ pressed }: { pressed: boolean }) => [
-                panelStyles.chip,
-                selectedState === state && panelStyles.chipSelected,
-                pressed && styles.pressed,
-              ]}
+              style={[panelStyles.chip, selectedState === state && panelStyles.chipSelected]}
             >
               <View
                 style={[panelStyles.dot, { backgroundColor: stateColor(state, theme.colors) }]}
@@ -875,7 +838,7 @@ export function AgentCrew({
       ) : null}
       <FlatList
         data={visibleNodes}
-        keyExtractor={(node: CrewNode) => node.entry.agent.id}
+        keyExtractor={(node) => node.entry.agent.id}
         renderItem={renderRow}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -900,17 +863,9 @@ export function AgentCrew({
       />
 
       <Modal
-        title={
-          dialog
-            ? dialog.kind === "message"
-              ? `${isWorking(dialog.node.entry.agent) ? "Interrupt and redirect" : "Nudge"} ${agentTitle(dialog.node.entry)}`
-              : dialog.kind === "detach"
-                ? `Detach ${agentTitle(dialog.node.entry)}?`
-                : `Archive ${agentTitle(dialog.node.entry)}?`
-            : "Agent action"
-        }
+        title={dialogTitle}
         open={dialog !== null}
-        onOpenChange={(open: boolean) => {
+        onOpenChange={(open) => {
           if (!open && !action.isPending) {
             setDialog(null);
             setMessage("");
@@ -936,25 +891,7 @@ export function AgentCrew({
       >
         <Modal.Content>
           <View style={panelStyles.modalBody}>
-            <Text style={panelStyles.modalCopy}>
-              {dialog
-                ? dialog.kind === "message"
-                  ? isWorking(dialog.node.entry.agent)
-                    ? "This agent is working. Sending a message stops its current turn and starts the new direction."
-                    : crewState(dialog.node.entry.agent) === "needs-input"
-                      ? "This agent is waiting for a permission decision. Sending a message dismisses that request and starts the new direction."
-                      : "Send a concise follow-up with the missing context or next step."
-                  : dialog.kind === "detach"
-                    ? dialog.node.descendantCount > 0
-                      ? `This agent and its ${dialog.node.descendantCount} descendants will leave this crew view and continue as standalone agents.`
-                      : "This agent will leave this crew view and continue as a standalone agent."
-                    : dialog.node.descendantCount > 0
-                      ? `This agent has ${dialog.node.descendantCount} managed descendants. Same-workspace descendants are archived with it; cross-workspace descendants detach and continue.`
-                      : isWorking(dialog.node.entry.agent)
-                        ? "This agent is still working. Archiving stops it and removes it from the crew."
-                        : "This agent will stop and be removed from the crew."
-                : ""}
-            </Text>
+            <Text style={panelStyles.modalCopy}>{dialogCopy}</Text>
             {dialog?.kind === "message" ? (
               <TextInput
                 accessibilityLabel="Message to subagent"
@@ -975,10 +912,7 @@ export function AgentCrew({
                   setDialog(null);
                   setMessage("");
                 }}
-                style={({ pressed }: { pressed: boolean }) => [
-                  panelStyles.secondaryButton,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [panelStyles.secondaryButton, pressed && styles.pressed]}
               >
                 <Text style={panelStyles.buttonText}>Cancel</Text>
               </Pressable>
@@ -986,7 +920,7 @@ export function AgentCrew({
                 accessibilityRole="button"
                 disabled={action.isPending || (dialog?.kind === "message" && !message.trim())}
                 onPress={submitDialog}
-                style={({ pressed }: { pressed: boolean }) => [
+                style={({ pressed }) => [
                   panelStyles.primaryButton,
                   dialog?.kind === "archive" && panelStyles.dangerButton,
                   pressed && styles.pressed,
@@ -995,7 +929,7 @@ export function AgentCrew({
                 ]}
               >
                 <Text style={panelStyles.primaryButtonText}>
-                  {action.isPending ? "Working…" : dialogConfirmLabel}
+                  {action.isPending ? "Working…" : confirmLabel}
                 </Text>
               </Pressable>
             </View>
@@ -1004,13 +938,9 @@ export function AgentCrew({
       </Modal>
 
       <Modal
-        title={
-          permissionDialog
-            ? `Permission request from ${agentTitle(permissionDialog.node.entry)}`
-            : "Permission request"
-        }
+        title={permissionDialogTitle}
         open={permissionDialog !== null}
-        onOpenChange={(open: boolean) => {
+        onOpenChange={(open) => {
           if (!open && !permissionAction.isPending) {
             setPermissionDialog(null);
           }
@@ -1021,12 +951,9 @@ export function AgentCrew({
           ) : undefined
         }
       >
-        <Modal.Content>
+        <Modal.Content contentContainerStyle={panelStyles.permissionBody}>
           {permissionDialog ? (
-            <ScrollView
-              style={panelStyles.permissionScroll}
-              contentContainerStyle={panelStyles.permissionBody}
-            >
+            <>
               <Text style={panelStyles.modalCopy}>
                 Review the pending permission request below. Allow or deny it explicitly.
               </Text>
@@ -1059,10 +986,7 @@ export function AgentCrew({
                   accessibilityRole="button"
                   disabled={permissionAction.isPending}
                   onPress={() => setPermissionDialog(null)}
-                  style={({ pressed }: { pressed: boolean }) => [
-                    panelStyles.permissionButton,
-                    pressed && styles.pressed,
-                  ]}
+                  style={({ pressed }) => [panelStyles.permissionButton, pressed && styles.pressed]}
                 >
                   <Text style={panelStyles.permissionButtonText}>Cancel</Text>
                 </Pressable>
@@ -1070,14 +994,14 @@ export function AgentCrew({
                   accessibilityRole="button"
                   disabled={permissionAction.isPending}
                   onPress={() => submitPermissionAction("deny")}
-                  style={({ pressed }: { pressed: boolean }) => [
+                  style={({ pressed }) => [
                     panelStyles.permissionButton,
                     panelStyles.permissionDeny,
                     pressed && styles.pressed,
                     permissionAction.isPending && styles.disabled,
                   ]}
                 >
-                  <Text style={panelStyles.permissionButtonText}>
+                  <Text style={panelStyles.permissionDenyText}>
                     {permissionAction.isPending ? "Working…" : "Deny"}
                   </Text>
                 </Pressable>
@@ -1085,7 +1009,7 @@ export function AgentCrew({
                   accessibilityRole="button"
                   disabled={permissionAction.isPending}
                   onPress={() => submitPermissionAction("allow")}
-                  style={({ pressed }: { pressed: boolean }) => [
+                  style={({ pressed }) => [
                     panelStyles.permissionButton,
                     panelStyles.permissionPrimary,
                     pressed && styles.pressed,
@@ -1097,7 +1021,7 @@ export function AgentCrew({
                   </Text>
                 </Pressable>
               </View>
-            </ScrollView>
+            </>
           ) : null}
         </Modal.Content>
       </Modal>

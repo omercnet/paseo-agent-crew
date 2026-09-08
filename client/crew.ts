@@ -1,3 +1,8 @@
+import type { PaseoAgentListResult } from "@getpaseo/client";
+
+export type AgentEntry = PaseoAgentListResult["entries"][number];
+type AgentSnapshot = AgentEntry["agent"];
+
 const LEGACY_PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
 
 export type CrewState = "needs-input" | "failed" | "working" | "ready" | "idle" | "closed";
@@ -29,37 +34,6 @@ const CREW_STATE_ORDER: Record<CrewState, number> = {
   closed: 5,
 };
 
-export interface CrewAgentSnapshot {
-  id: string;
-  provider: string;
-  cwd: string;
-  workspaceId?: string | null;
-  model?: string | null;
-  title?: string | null;
-  labels?: Record<string, string>;
-  parentAgentId?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  lastUserMessageAt?: string | null;
-  status: string;
-  capabilities?: Record<string, unknown>;
-  currentModeId?: string | null;
-  availableModes?: readonly unknown[];
-  pendingPermissions?: readonly unknown[] | null;
-  persistence?: unknown;
-  archivedAt?: string | null;
-  attentionTimestamp?: string | null;
-  activeTurn?: { turnId: string; startedAt: string | null } | null;
-  requiresAttention?: boolean;
-  attentionReason?: string | null;
-  lastError?: string | null;
-}
-
-export interface AgentEntry {
-  agent: CrewAgentSnapshot;
-  project: unknown;
-}
-
 export interface CrewNode {
   entry: AgentEntry;
   depth: number;
@@ -74,14 +48,14 @@ export interface CrewTreeOptions {
   workspaceNames?: ReadonlyMap<string, string>;
 }
 
-export function parentAgentId(agent: CrewAgentSnapshot): string | null {
-  const firstClass = agent.parentAgentId?.trim();
-  if (firstClass) return firstClass;
+export function parentAgentId(agent: AgentSnapshot): string | null {
+  const firstClass = "parentAgentId" in agent ? agent.parentAgentId : null;
+  if (typeof firstClass === "string" && firstClass.trim()) return firstClass.trim();
   const legacy = agent.labels?.[LEGACY_PARENT_AGENT_ID_LABEL];
   return typeof legacy === "string" && legacy.trim().length > 0 ? legacy.trim() : null;
 }
 
-export function crewState(agent: CrewAgentSnapshot): CrewState {
+export function crewState(agent: AgentSnapshot): CrewState {
   if (agent.status === "error") return "failed";
   if ((agent.pendingPermissions?.length ?? 0) > 0 || agent.attentionReason === "permission") {
     return "needs-input";
@@ -92,7 +66,7 @@ export function crewState(agent: CrewAgentSnapshot): CrewState {
   return "idle";
 }
 
-export function isWorking(agent: CrewAgentSnapshot): boolean {
+export function isWorking(agent: AgentSnapshot): boolean {
   return agent.status === "running" || agent.status === "initializing";
 }
 
@@ -102,7 +76,7 @@ export function agentTitle(entry: AgentEntry): string {
   return `Agent ${entry.agent.id.slice(0, 8)}`;
 }
 
-export function agentAgeTimestamp(agent: CrewAgentSnapshot): number {
+export function agentAgeTimestamp(agent: AgentSnapshot): number {
   const value = agent.attentionTimestamp ?? agent.activeTurn?.startedAt ?? agent.updatedAt;
   const timestamp = Date.parse(value ?? "");
   return Number.isFinite(timestamp) ? timestamp : 0;

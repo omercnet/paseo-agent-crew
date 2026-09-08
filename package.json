@@ -29,7 +29,6 @@
     "index.client.tsx",
     "paseo-plugin.json",
     "package.json",
-    "shared",
     "tsconfig.json"
   ],
   "scripts": {
@@ -48,7 +47,6 @@
     "@getpaseo/protocol": "0.8.0-beta.1",
     "@tanstack/react-query": "^5.102.3",
     "@types/bun": "^1.4.0",
-    "@types/node": "^24.5.2",
     "@types/react": "~19.2.0",
     "fflate": "^0.8.3",
     "react": "19.1.0",

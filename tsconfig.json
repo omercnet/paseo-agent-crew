@@ -10,7 +10,7 @@
     "noEmit": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["bun", "node"]
+    "types": ["bun"]
   },
   "include": ["**/*.ts", "**/*.tsx"]
 }
