@@ -32,6 +32,7 @@ rewritten before capture so no private project or session identifiers are publis
 - Text search over title, agent ID, provider, model, working directory, workspace, and labels.
 - Live agent and workspace subscriptions, debounced by 500 ms, plus a 30-second backstop refresh.
 - Direct navigation to a selected agent when the host provides agent navigation.
+- Explicit Allow and Deny controls for visible pending permission requests.
 
 ## Controls
 
@@ -47,6 +48,8 @@ Each row exposes the operations available through the public Paseo SDK:
 - **Archive** stops and removes the selected agent. Same-workspace descendants may be archived with
   it; cross-workspace descendants may detach and continue. The confirmation dialog describes that
   behavior before the action runs.
+- **Permission allow / deny** opens one explicit request modal for the selected pending request and
+  answers it with `request.id`; no automatic approval policy runs.
 
 Every mutating control uses a confirmation dialog. Successful actions show a toast; SDK errors are
 shown without hiding the failure.
@@ -54,11 +57,11 @@ shown without hiding the failure.
 ## How it reads state
 
 `usePaseo().agents.list()` and `usePaseo().workspaces.list()` page the selected daemon directory at
-200 entries per page, up to 10 pages. Parent relationships come from the public
-`paseo.parent-agent-id` label. The workspace crew contains local agents, their managed descendants,
-and only the foreign ancestor paths needed to explain local membership. Archived agents are omitted,
-malformed parent cycles are bounded, and siblings are ordered by actionable state, creation time,
-then ID.
+200 entries per page, up to 10 pages. Parent relationships come from the first-class
+`parentAgentId` field when the public 0.8 SDK exposes it, with a legacy label fallback for older
+snapshots. The workspace crew contains local agents, their managed descendants, and only the foreign
+ancestor paths needed to explain local membership. Archived agents are omitted, malformed parent
+cycles are bounded, and siblings are ordered by actionable state, creation time, then ID.
 
 State precedence is:
 
@@ -78,12 +81,9 @@ Agent Crew intentionally stays inside the public Paseo plugin SDK.
 
 - It shows managed Paseo agents only. Native provider subagents are not exposed by the public plugin
   SDK.
-- `paseo.parent-agent-id` is an advisory label rather than a first-class relationship. The panel
-  bounds malformed cycles and treats the resulting tree as best-effort.
 - Workspace-less top-level agents are outside every workspace crew; workspace-less descendants of
   visible members remain in that crew.
-- It does not add heartbeat controls, permission responses, private cancellation calls, or direct
-  daemon API access.
+- It does not add heartbeat controls, private cancellation calls, or direct daemon API access.
 - Sending to a running agent interrupts its active turn; there is no separate non-interrupting send
   operation.
 - If the daemon contains more than 2,000 agents, the panel warns that its directory snapshot may
@@ -123,9 +123,9 @@ paseo plugin install /absolute/path/to/paseo-agent-crew
 paseo plugin reload agent-crew
 ```
 
-The project targets Paseo 0.7.2 and pins `@getpaseo/client`, `@getpaseo/plugin`,
-`@getpaseo/protocol`, and `@getpaseo/cli` to the compatible `^0.7.2` line.
-React 19.1 and React Native 0.81 match the versions supplied by the Paseo host.
+The project targets Paseo 0.8 beta and pins `@getpaseo/cli`, `@getpaseo/client`, `@getpaseo/plugin`,
+and `@getpaseo/protocol` to `0.8.0-beta.1`. React 19.1 and React Native 0.81 match the versions
+supplied by the Paseo host.
 
 Release Please maintains versions, changelog entries, tags, and GitHub releases from Conventional
 Commits. Each release includes an `agent-crew-vX.Y.Z.zip` asset containing the installable plugin
