@@ -10,6 +10,13 @@
 - add an explicit pending-permission modal with Allow and Deny actions
 - pin Paseo plugin packages to `0.8.0-beta.1`
 
+## [0.2.2](https://github.com/omercnet/paseo-agent-crew/compare/v0.2.1...v0.2.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* derive client API types from host SDK ([#7](https://github.com/omercnet/paseo-agent-crew/issues/7)) ([ffdfacf](https://github.com/omercnet/paseo-agent-crew/commit/ffdfacf9e4f0bd43f84e973176b2b2ffd7fe6350))
+
 ## [0.2.1](https://github.com/omercnet/paseo-agent-crew/compare/v0.2.0...v0.2.1) (2026-09-08)
 
 
