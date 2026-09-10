@@ -1,5 +1,15 @@
 # Agent Crew
 
+> [!IMPORTANT]
+> This repository is archived. Development moved to
+> [`omercnet/paseo-plugins/agent-crew`](https://github.com/omercnet/paseo-plugins/tree/main/agent-crew).
+> Existing Paseo Git installations remain on this repository. Migrate with:
+>
+> ```bash
+> paseo plugin remove agent-crew
+> paseo plugin add omercnet/paseo-plugins:agent-crew
+> ```
+
 See and control every managed Paseo agent working in a workspace. Agent Crew adds a
 workspace-context Explorer panel plus an `Open Agent Crew` Command Center item.
 
@@ -96,14 +106,14 @@ Paseo plugins are trusted, unsandboxed code. Review the source before installing
 From GitHub:
 
 ```bash
-paseo plugin add omercnet/paseo-agent-crew
+paseo plugin add omercnet/paseo-plugins:agent-crew
 ```
 
 From a local checkout on the Paseo daemon host:
 
 ```bash
-git clone https://github.com/omercnet/paseo-agent-crew.git
-cd paseo-agent-crew
+git clone https://github.com/omercnet/paseo-plugins.git
+cd paseo-plugins/agent-crew
 bun install --frozen-lockfile
 paseo plugin install "$PWD"
 ```
